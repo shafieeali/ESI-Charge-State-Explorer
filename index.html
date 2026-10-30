@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESI charge-state explorer (CHM4130 PS6, Problems 27–29)</title>
+<style>
+:root{--ink:#1f2d3a;--navy:#163e63;--steel:#326b9e;--muted:#566676;--rule:#cfdbe6;--panel:#f1f5f9;--bg:#ffffff;--pick:#b23a48;--alert:#b23a48;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--ink:#e3eaf1;--navy:#a9cdf0;--steel:#7fb0dc;--muted:#9fb0c0;--rule:#34475a;--panel:#17232f;--bg:#0f1820;--pick:#f0828f;--alert:#f0828f;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Arial,Helvetica,sans-serif}
+main{max-width:900px;margin:0 auto;padding:22px 18px 34px}
+h1{font-size:1.45rem;color:var(--navy);margin:0 0 2px}
+.src{margin:0 0 14px;color:var(--muted);font-size:.9rem}
+.lede{margin:0 0 10px;max-width:72ch}
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin:10px 0}
+.controls label{font-size:.95rem}
+input[type=range]{width:min(320px,100%);accent-color:var(--steel)}
+input[type=number]{font:inherit;width:9.5em;padding:4px 6px;border:1px solid var(--rule);border-radius:4px;background:var(--bg);color:var(--ink)}
+button{font:inherit;font-size:.9rem;padding:5px 11px;border:1px solid var(--steel);border-radius:4px;background:transparent;color:var(--navy);cursor:pointer}
+button:hover{background:var(--panel)}
+:focus-visible{outline:2px solid var(--steel);outline-offset:2px}
+.chart{overflow-x:auto}
+.chart svg{min-width:620px}
+svg{display:block;width:100%;height:auto}
+.ax{stroke:var(--muted);stroke-width:1}
+.tk{fill:var(--muted);font-size:12px}
+.hit{fill:transparent;cursor:pointer}
+.hit:focus{outline:none}
+.hit:focus-visible{stroke:var(--steel);stroke-width:2;fill:var(--panel)}
+.calc{border-left:3px solid var(--steel);background:var(--panel);padding:10px 14px;margin:12px 0;min-height:4.2em;font-variant-numeric:tabular-nums}
+.calc p{margin:2px 0}
+.err{color:var(--alert)}
+.note{font-size:.9rem;color:var(--muted);max-width:72ch}
+</style>
+</head>
+<body>
+<main>
+<h1>ESI charge-state explorer</h1>
+<p class="src">CHM4130 Practice Problem Set 6, Problems 27–29</p>
+<p class="lede">Electrospray puts many protons on a protein, so one molecule gives a whole series of peaks at m/z = (M + z·m<sub>H</sub>)/z. Click two neighboring peaks to calculate their charge and the protein mass with the formulas from Problem 27.</p>
+
+<div class="controls">
+  <label for="mass">Protein mass, M (Da)</label>
+  <input type="range" id="mass" min="5000" max="80000" step="1" value="16952">
+  <input type="number" id="massn" min="5000" max="80000" step="0.01" value="16951.5" aria-label="Protein mass in daltons">
+</div>
+<div class="controls">
+  <button type="button" data-m="12401.9">Problem 28 protein (12,401.9 Da)</button>
+  <button type="button" data-m="16951.5">Problem 29 apomyoglobin (16,951.5 Da)</button>
+</div>
+
+<div class="chart"><svg id="plot" viewBox="0 0 860 320" role="group" aria-label="Simulated ESI spectrum. Each peak is a button."></svg></div>
+<div class="calc" id="calc" aria-live="polite"><p>Click two neighboring peaks.</p></div>
+<p class="note">m<sub>H</sub> = 1.0073 Da. Peak positions are exact; peak heights are illustrative. The calculation uses m/z values rounded to two decimals, as you would read them from a spectrum, so n comes out very close to, but not exactly, a whole number.</p>
+</main>
+
+<script>
+(function(){
+  var NS='http://www.w3.org/2000/svg',MH=1.0073;
+  function el(tag,attrs,text){var e=document.createElementNS(NS,tag);for(var k in attrs)e.setAttribute(k,attrs[k]);if(text!=null)e.textContent=text;return e;}
+  var W=860,H=320,PL=30,PR=20,PT=40,PB=44,X0=500,X1=2000;
+  var range=document.getElementById('mass'),num=document.getElementById('massn'),svg=document.getElementById('plot'),calc=document.getElementById('calc');
+  var M=16951.5,sel=[];
+  function X(v){return PL+(v-X0)/(X1-X0)*(W-PL-PR);}
+  function r2(v){return Math.round(v*100)/100;}
+  function f2(v){return v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+  function peaks(){
+    var list=[],zc=M/1100,sg=Math.max(1.5,0.16*zc);
+    for(var z=1;z<=400;z++){var mz=(M+z*MH)/z;if(mz>=X0&&mz<=X1)list.push({z:z,mz:mz,h:Math.exp(-0.5*Math.pow((z-zc)/sg,2))});}
+    var mx=Math.max.apply(null,list.map(function(p){return p.h;}))||1;
+    list.forEach(function(p){p.h=0.12+0.88*p.h/mx;});
+    return list;
+  }
+  function explain(list){
+    if(sel.length===0){calc.innerHTML='<p>Click two neighboring peaks.</p>';return;}
+    var a=list.find(function(p){return p.z===sel[0];});
+    if(sel.length===1){calc.innerHTML='<p>Selected m/z '+f2(r2(a.mz))+'. Now click one of its neighbors.</p>';return;}
+    var b=list.find(function(p){return p.z===sel[1];});
+    if(Math.abs(a.z-b.z)!==1){calc.innerHTML='<p class="err">Those peaks aren’t neighbors. The formula assumes the two charges differ by exactly 1, so pick two peaks side by side.</p>';return;}
+    var hi=a.mz>b.mz?a:b,lo=a.mz>b.mz?b:a;
+    var m1=r2(hi.mz),m2=r2(lo.mz);
+    var n=(m2-MH)/(m1-m2),zi=Math.round(n),Mc=zi*(m1-MH);
+    calc.innerHTML='<p>m₁ = '+f2(m1)+' (higher m/z, charge n) and m₂ = '+f2(m2)+' (lower m/z, charge n + 1)</p>'
+      +'<p>n = (m₂ − m<sub>H</sub>) / (m₁ − m₂) = ('+f2(m2)+' − 1.0073) / ('+f2(m1)+' − '+f2(m2)+') = '+n.toFixed(2)+', so z = '+zi+' for m/z '+f2(m1)+' and z = '+(zi+1)+' for m/z '+f2(m2)+'</p>'
+      +'<p>M = n(m₁ − m<sub>H</sub>) = '+zi+' × ('+f2(m1)+' − 1.0073) = <b>'+f2(Mc)+' Da</b></p>';
+  }
+  function draw(){
+    var list=peaks();
+    sel=sel.filter(function(z){return list.some(function(p){return p.z===z;});});
+    while(svg.firstChild)svg.removeChild(svg.firstChild);
+    svg.appendChild(el('line',{x1:PL,y1:H-PB,x2:W-PR,y2:H-PB,'class':'ax'}));
+    for(var t=500;t<=2000;t+=250){
+      svg.appendChild(el('line',{x1:X(t),y1:H-PB,x2:X(t),y2:H-PB+5,'class':'ax'}));
+      svg.appendChild(el('text',{x:X(t),y:H-PB+20,'text-anchor':'middle','class':'tk'},String(t)));
+    }
+    svg.appendChild(el('text',{x:W/2,y:H-6,'text-anchor':'middle','class':'tk'},'m/z'));
+    var minGap=Infinity;
+    for(var i=1;i<list.length;i++)minGap=Math.min(minGap,Math.abs(X(list[i].mz)-X(list[i-1].mz)));
+    var showAll=minGap>=54;
+    var hitW=Math.max(8,Math.min(26,minGap*0.8));
+    var done=sel.length===2&&Math.abs(sel[0]-sel[1])===1;
+    var maxZ=sel.length===2?Math.max(sel[0],sel[1]):null;
+    list.forEach(function(p){
+      var x=X(p.mz),y=H-PB-p.h*(H-PT-PB),picked=sel.indexOf(p.z)>=0;
+      svg.appendChild(el('line',{x1:x,y1:H-PB,x2:x,y2:y,stroke:picked?'var(--pick)':'var(--navy)','stroke-width':picked?3.5:2}));
+      var anc='middle',lx=x;
+      if(picked&&sel.length===2&&!showAll){if(p.z===maxZ){anc='end';lx=x-5;}else{anc='start';lx=x+5;}}
+      if(showAll||picked){
+        svg.appendChild(el('text',{x:lx,y:y-8,'text-anchor':anc,'font-size':12,fill:picked?'var(--pick)':'var(--ink)'},f2(r2(p.mz))));
+      }
+      if(picked&&done){
+        svg.appendChild(el('text',{x:lx,y:y-24,'text-anchor':anc,'font-size':12,'font-weight':'bold',fill:'var(--pick)'},'z = '+p.z));
+      }
+      var h=el('rect',{x:x-hitW/2,y:PT-10,width:hitW,height:H-PB-PT+10,'class':'hit',tabindex:0,role:'button','aria-label':'Peak at m/z '+f2(r2(p.mz))+(picked?', selected':'')});
+      h.appendChild(el('title',{},'m/z '+f2(r2(p.mz))));
+      function pick(){
+        if(sel.length===2)sel=[];
+        var k=sel.indexOf(p.z);if(k>=0)sel.splice(k,1);else sel.push(p.z);
+        draw();
+      }
+      h.addEventListener('click',pick);
+      h.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();pick();}});
+      svg.appendChild(h);
+    });
+    explain(list);
+  }
+  function setM(v,fromRange){
+    v=Math.min(80000,Math.max(5000,+v||5000));M=v;sel=[];
+    if(fromRange){num.value=v;}else{range.value=Math.round(v);}
+    draw();
+  }
+  range.addEventListener('input',function(){setM(+range.value,true);});
+  num.addEventListener('change',function(){setM(+num.value,false);});
+  document.querySelectorAll('button[data-m]').forEach(function(btn){btn.addEventListener('click',function(){var v=+btn.getAttribute('data-m');num.value=v;setM(v,false);});});
+  draw();
+})();
+</script>
+</body>
+</html>
